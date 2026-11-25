@@ -36,10 +36,10 @@ public class PaymentService {
     private final OrderService orderService;
     private final PaymentRepository paymentRepository;
 
-    @Value("${stripe.webhook-secret:whsec_test_dummy}")
+    @Value("${stripe.webhook-secret:}")
     private String stripeWebhookSecret;
 
-    @Value("${app.frontend-url:http://localhost:5173}")
+    @Value("${app.frontend-url:http://localhost:2000}")
     private String frontendUrl;
 
     public Map<String, Object> createPayment(String orderId) {
@@ -149,6 +149,9 @@ public class PaymentService {
     }
 
     public String handleWebhook(String payload, String stripeSignature) {
+        if (stripeWebhookSecret == null || stripeWebhookSecret.isBlank()) {
+            throw new IllegalStateException("STRIPE_WEBHOOK_SECRET is not configured");
+        }
         if (stripeSignature == null || stripeSignature.isBlank()) {
             throw new IllegalArgumentException("Missing Stripe signature");
         }

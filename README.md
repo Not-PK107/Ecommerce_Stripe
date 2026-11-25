@@ -37,7 +37,7 @@ A full-stack E-commerce web application built with **Spring Boot 4.1.2 (Java 25)
 
 - **Product Catalogue (`/api/products`)**
   - Create, list active products, retrieve by ID, update, and soft-delete (`active = false`) products.
-  - Supports Zoho Catalyst `Product` table persistence when `app.catalyst.enabled=true` (currently hardcoded to `true` in `application.properties`), or an in-memory `ConcurrentHashMap` pre-seeded with 4 sample electronics products when `app.catalyst.enabled=false`.
+  - Supports Zoho Catalyst `Product` table persistence when `app.catalyst.enabled=true` (`${APP_CATALYST_ENABLED:true}` in `backend/src/main/resources/application.properties`), or an in-memory `ConcurrentHashMap` pre-seeded with 4 sample electronics products when `app.catalyst.enabled=false`.
 - **Customer Accounts & Authentication (`/api/customers`, `/auth/**`)**
   - Customer registration with validation (`customerName`: letters, spaces, and basic punctuation without digits; `email`: regex-validated and unique; `phone`: 10 digits; `address`: required).
   - Email-based customer lookup login (`POST /api/customers/login`) and profile update/deletion.
@@ -62,7 +62,7 @@ A full-stack E-commerce web application built with **Spring Boot 4.1.2 (Java 25)
 
 | Layer | Technology | Version |
 | --- | --- | --- |
-| **Backend Language** | Java | `25` (`pom.xml`) |
+| **Backend Language** | Java | `25` (`backend/pom.xml`) |
 | **Backend Framework** | Spring Boot (`spring-boot-starter-parent`) | `4.1.2` |
 | **Web & Validation** | `spring-boot-starter-webmvc`, `spring-boot-starter-validation` | Managed by Boot `4.1.2` |
 | **Security & OAuth2** | `spring-boot-starter-security`, `spring-boot-starter-oauth2-client` | Managed by Boot `4.1.2` |
@@ -108,105 +108,110 @@ flowchart LR
 
 ```text
 E-commerce/
-├── .env.example                          # Backend environment variable template (tracked)
 ├── .gitattributes
 ├── .gitignore                            # Ignores .env, .env.*, zc-auth.json, target/, .idea, .vscode/, etc.
 ├── .mcp.json
-├── HELP.md                               # Local helper notes (gitignored)
-├── README.md                             # Project documentation
-├── mvnw / mvnw.cmd                       # Maven Wrapper scripts
+├── README.md                             # Root project documentation
 ├── package-lock.json
-├── pom.xml                               # Maven project & dependency configuration
-├── frontend/
-│   ├── .env.example                      # Frontend Vite environment variable template (tracked)
-│   ├── index.html                        # HTML entry point ("Form & Field")
-│   ├── package.json                      # React 19 + Vite 6 dependencies and scripts
-│   ├── package-lock.json
-│   ├── vite.config.js                    # Vite dev server config (localhost:2000, strictPort: true)
+├── backend/
+│   ├── .env.example                      # Backend environment variable template (tracked)
+│   ├── .mvn/                             # Maven Wrapper support files
+│   ├── HELP.md                           # Local helper notes (gitignored)
+│   ├── mvnw / mvnw.cmd                   # Maven Wrapper scripts
+│   ├── pom.xml                           # Maven project & dependency configuration
 │   └── src/
-│       ├── api.js                        # Fetch wrapper using VITE_API_BASE_URL & credentials: include
-│       ├── App.jsx                       # Storefront UI, auth modals, cart sync, checkout flow
-│       ├── main.jsx                      # React root mount
-│       └── styles.css                    # Storefront styling
-└── src/
-    ├── main/
-    │   ├── java/com/example/ecommerce/
-    │   │   ├── ECommerceApplication.java
-    │   │   ├── config/
-    │   │   │   ├── CatalystClient.java   # Zoho Catalyst BaaS REST client
-    │   │   │   ├── CorsConfig.java       # WebMvc CORS configuration
-    │   │   │   ├── OAuthManager.java     # Catalyst refresh-token manager
-    │   │   │   ├── SecurityConfig.java   # Spring Security, OAuth2 login, logout, CORS
-    │   │   │   └── StripeConfig.java     # Conditional StripeClient bean
-    │   │   ├── controller/
-    │   │   │   ├── AuthController.java
-    │   │   │   ├── CartController.java
-    │   │   │   ├── CustomerController.java
-    │   │   │   ├── OrderController.java
-    │   │   │   ├── PaymentController.java
-    │   │   │   └── ProductController.java
-    │   │   ├── dto/
-    │   │   │   ├── AddToCartRequest.java
-    │   │   │   ├── CustomerRequest.java
-    │   │   │   ├── CustomerResponse.java
-    │   │   │   ├── LoginRequest.java
-    │   │   │   ├── OrderItemResponse.java
-    │   │   │   ├── OrderRequest.java
-    │   │   │   ├── OrderResponse.java
-    │   │   │   ├── PaymentResponse.java
-    │   │   │   └── UpdateCartRequest.java
-    │   │   ├── exception/
-    │   │   │   ├── ApiErrorResponse.java
-    │   │   │   ├── ConflictException.java
-    │   │   │   ├── GlobalExceptionHandler.java
-    │   │   │   └── ResourceNotFoundException.java
-    │   │   ├── model/
-    │   │   │   ├── Cart.java
-    │   │   │   ├── CartItem.java
-    │   │   │   ├── Customer.java
-    │   │   │   ├── Order.java
-    │   │   │   ├── OrderItem.java
-    │   │   │   ├── Payment.java
-    │   │   │   ├── Product.java
-    │   │   │   └── ZohoUserToken.java
-    │   │   ├── repository/
-    │   │   │   ├── CartRepository.java
-    │   │   │   ├── CustomerRepository.java
-    │   │   │   ├── OrderRepository.java
-    │   │   │   ├── PaymentRepository.java
-    │   │   │   └── ProductRepository.java
-    │   │   └── service/
-    │   │       ├── CartService.java
-    │   │       ├── CustomerService.java
-    │   │       ├── OrderService.java
-    │   │       ├── PaymentService.java
-    │   │       ├── ProductService.java
-    │   │       └── ZohoTokenService.java
-    │   └── resources/
-    │       ├── META-INF/
-    │       │   └── additional-spring-configuration-metadata.json
-    │       ├── application.properties
-    │       └── templates/
-    └── test/java/com/example/ecommerce/
-        ├── AuthControllerTest.java
-        ├── CartRepositoryTest.java
-        ├── CustomerAndOrderControllerTest.java
-        ├── CustomerRepositoryTest.java
-        ├── CustomerServiceTest.java
-        ├── ECommerceApplicationTests.java
-        ├── OrderServiceTest.java
-        ├── ProductAndCartControllerTest.java
-        ├── ProductRepositoryTest.java
-        ├── ProductServiceTest.java
-        └── ZohoTokenServiceTest.java
+│       ├── main/
+│       │   ├── java/com/example/ecommerce/
+│       │   │   ├── ECommerceApplication.java
+│       │   │   ├── config/
+│       │   │   │   ├── CatalystClient.java               # Zoho Catalyst BaaS REST client
+│       │   │   │   ├── CorsConfig.java                   # WebMvc CORS configuration
+│       │   │   │   ├── DotenvEnvironmentPostProcessor.java # Automatic .env loader (OS env takes precedence)
+│       │   │   │   ├── OAuthManager.java                 # Catalyst refresh-token manager
+│       │   │   │   ├── SecurityConfig.java               # Spring Security, OAuth2 login, logout, CORS
+│       │   │   │   └── StripeConfig.java                 # Conditional StripeClient bean
+│       │   │   ├── controller/
+│       │   │   │   ├── AuthController.java
+│       │   │   │   ├── CartController.java
+│       │   │   │   ├── CustomerController.java
+│       │   │   │   ├── OrderController.java
+│       │   │   │   ├── PaymentController.java
+│       │   │   │   └── ProductController.java
+│       │   │   ├── dto/
+│       │   │   │   ├── AddToCartRequest.java
+│       │   │   │   ├── CustomerRequest.java
+│       │   │   │   ├── CustomerResponse.java
+│       │   │   │   ├── LoginRequest.java
+│       │   │   │   ├── OrderItemResponse.java
+│       │   │   │   ├── OrderRequest.java
+│       │   │   │   ├── OrderResponse.java
+│       │   │   │   ├── PaymentResponse.java
+│       │   │   │   └── UpdateCartRequest.java
+│       │   │   ├── exception/
+│       │   │   │   ├── ApiErrorResponse.java
+│       │   │   │   ├── ConflictException.java
+│       │   │   │   ├── GlobalExceptionHandler.java
+│       │   │   │   └── ResourceNotFoundException.java
+│       │   │   ├── model/
+│       │   │   │   ├── Cart.java
+│       │   │   │   ├── CartItem.java
+│       │   │   │   ├── Customer.java
+│       │   │   │   ├── Order.java
+│       │   │   │   ├── OrderItem.java
+│       │   │   │   ├── Payment.java
+│       │   │   │   ├── Product.java
+│       │   │   │   └── ZohoUserToken.java
+│       │   │   ├── repository/
+│       │   │   │   ├── CartRepository.java
+│       │   │   │   ├── CustomerRepository.java
+│       │   │   │   ├── OrderRepository.java
+│       │   │   │   ├── PaymentRepository.java
+│       │   │   │   └── ProductRepository.java
+│       │   │   └── service/
+│       │   │       ├── CartService.java
+│       │   │       ├── CustomerService.java
+│       │   │       ├── OrderService.java
+│       │   │       ├── PaymentService.java
+│       │   │       ├── ProductService.java
+│       │   │       └── ZohoTokenService.java
+│       │   └── resources/
+│       │       ├── META-INF/
+│       │       │   ├── additional-spring-configuration-metadata.json
+│       │       │   └── spring.factories
+│       │       ├── application.properties
+│       │       └── templates/
+│       └── test/java/com/example/ecommerce/
+│           ├── AuthControllerTest.java
+│           ├── CartRepositoryTest.java
+│           ├── CustomerAndOrderControllerTest.java
+│           ├── CustomerRepositoryTest.java
+│           ├── CustomerServiceTest.java
+│           ├── DotenvEnvironmentPostProcessorTest.java
+│           ├── ECommerceApplicationTests.java
+│           ├── OrderServiceTest.java
+│           ├── ProductAndCartControllerTest.java
+│           ├── ProductRepositoryTest.java
+│           ├── ProductServiceTest.java
+│           └── ZohoTokenServiceTest.java
+└── frontend/
+    ├── .env.example                      # Frontend Vite environment variable template (tracked)
+    ├── index.html                        # HTML entry point ("Form & Field")
+    ├── package.json                      # React 19 + Vite 6 dependencies and scripts
+    ├── package-lock.json
+    ├── vite.config.js                    # Vite dev server config (localhost:2000, strictPort: true)
+    └── src/
+        ├── api.js                        # Fetch wrapper using VITE_API_BASE_URL & credentials: include
+        ├── App.jsx                       # Storefront UI, auth modals, cart sync, checkout flow
+        ├── main.jsx                      # React root mount
+        └── styles.css                    # Storefront styling
 ```
 
 ---
 
 ## 6. Prerequisites and Software Versions
 
-- **Java Development Kit (JDK):** Java `25` or newer (`<java.version>25</java.version>` in `pom.xml`)
-- **Maven:** Use the included Maven Wrapper (`./mvnw` / `mvnw.cmd`)
+- **Java Development Kit (JDK):** Java `25` or newer (`<java.version>25</java.version>` in `backend/pom.xml`)
+- **Maven:** Use the included Maven Wrapper (`backend/mvnw` / `backend/mvnw.cmd`)
 - **Node.js & npm:** Node.js `18+` (or `20+` LTS) and `npm` for the React/Vite frontend
 - **External Accounts (for live integrations):**
   - **Stripe Account** (Test Mode secret/publishable keys and webhook signing secret)
@@ -225,14 +230,14 @@ E-commerce/
    cd E-commerce
    ```
 
-2. **Prepare local environment files (for the planned `.env` workflow or manual shell export):**
+2. **Prepare local environment files:**
 
    ```sh
-   cp .env.example .env
+   cp backend/.env.example backend/.env
    cp frontend/.env.example frontend/.env
    ```
 
-   Update `.env` with your personal Stripe and Zoho credentials, and set `VITE_API_BASE_URL=http://localhost:8080` in `frontend/.env`.
+   Update `backend/.env` with your personal Stripe and Zoho credentials, and set `VITE_API_BASE_URL=http://localhost:8080` in `frontend/.env`.
 
 3. **Install frontend dependencies:**
 
@@ -245,6 +250,7 @@ E-commerce/
 4. **Verify backend compilation and tests:**
 
    ```sh
+   cd backend
    ./mvnw test
    ```
 
@@ -252,40 +258,34 @@ E-commerce/
 
 ## 8. Backend Configuration and Startup
 
-### Current Behavior vs. Planned IDE-Independent Startup
+### IDE-Independent `.env` Loading
 
-- **Current State on Disk:**
-  - The existing IntelliJ IDEA Run Configuration (`.idea/workspace.xml`) injects environment variables (`STRIPE_SECRET_KEY`, `STRIPE_PUBLISHABLE_KEY`, `ZOHO_CLIENT_ID`, `ZOHO_CLIENT_SECRET`, `ZOHO_CATALYST_*`, `X_ZOHO_CATALYST_*`).
-  - `pom.xml` does **not** yet include a dotenv library, and `src/main/resources/application.properties` uses placeholder defaults (`demo-*`, `*_dummy`) when environment variables are absent.
-  - Because **Spring Boot does not automatically load a generic `.env` file by default**, running `./mvnw spring-boot:run` from a terminal today requires exporting environment variables in your shell (for example, `set -a; source .env; set +a`) until a dotenv-loading mechanism is integrated.
-- **Planned IDE-Independent Setup:**
-  - Once a Spring Boot-compatible dotenv loader is configured and dummy defaults are removed from `application.properties`, developers will be able to run `ECommerceApplication` identically from **IntelliJ IDEA**, **VS Code**, **terminal**, or any compatible Java IDE using only the root `.env` file.
+- `DotenvEnvironmentPostProcessor` (registered in `backend/src/main/resources/META-INF/spring.factories`) automatically locates `backend/.env` (or `.env`) from the working directory or parent project structure before Spring resolves placeholders in `backend/src/main/resources/application.properties`.
+- External OS/container environment variables always take precedence over values in `backend/.env` (`dotenvPropertySource-systemEnvironment` is registered immediately after `systemEnvironment`).
+- Developers can run `ECommerceApplication` identically from **IntelliJ IDEA**, **VS Code**, **terminal**, or any other Java IDE without manual IDE Run Configuration environment variables.
 
 ### Running from Terminal
 
-If running from a terminal before dotenv auto-loading is added, load your `.env` exports into the shell first (or export variables directly):
-
 ```sh
-set -a
-source .env
-set +a
+cd backend
 ./mvnw spring-boot:run
 ```
 
 Or package and run as a JAR:
 
 ```sh
+cd backend
 ./mvnw package -DskipTests
 java -jar target/E-commerce-0.0.1-SNAPSHOT.jar
 ```
 
-The backend listens on **`http://localhost:8080`** (`server.port=8080` in `src/main/resources/application.properties`).
+The backend listens on **`http://localhost:8080`** (or the configured `SERVER_PORT` / `server.port`).
 
 ### Running from IntelliJ IDEA, VS Code, and Other Java IDEs
 
-- **IntelliJ IDEA:** Currently runs `com.example.ecommerce.ECommerceApplication` with variables set in the IDE Run Configuration. Under the planned `.env` setup, clear manual Run Configuration variables so IntelliJ uses the shared `.env` file.
-- **VS Code:** Import as a Maven project using the *Extension Pack for Java* / *Spring Boot Extension Pack* and run `ECommerceApplication` (using `.env` once dotenv loading is added, or `launch.json` `envFile` / shell exports in the interim).
-- **Other Java IDEs (Eclipse / STS):** Import the root `pom.xml` as a Maven project and launch `com.example.ecommerce.ECommerceApplication`.
+- **IntelliJ IDEA:** Run `com.example.ecommerce.ECommerceApplication` directly. Remove any old manual Run Configuration environment variables from `.idea/workspace.xml` if you want `.env` values to apply without IDE overrides.
+- **VS Code:** Import `backend/pom.xml` as a Maven project using the *Extension Pack for Java* / *Spring Boot Extension Pack* and run `ECommerceApplication` directly without `launch.json` `env` entries.
+- **Other Java IDEs (Eclipse / STS):** Import `backend/pom.xml` as an existing Maven project and launch `com.example.ecommerce.ECommerceApplication`.
 
 ---
 
@@ -324,54 +324,57 @@ The backend listens on **`http://localhost:8080`** (`server.port=8080` in `src/m
 
 ## 10. Environment Variable Configuration
 
-> **Important Distinction — Current vs. Planned Setup:**
-> - **Currently implemented:** Environment variables are configured in IntelliJ IDEA Run Configuration (`.idea/workspace.xml`) or exported in the OS shell. `src/main/resources/application.properties` binds `${VAR_NAME:fallback}` with `demo-*` / `*_dummy` defaults, and Spring Boot does **not** load `.env` automatically because no dotenv library is currently in `pom.xml`.
-> - **Planned IDE-independent transition:** Developers create a local `.env` from `.env.example` in the repository root, configure a dotenv loader compatible with Spring Boot `4.1.2` / Java `25`, remove dummy secret defaults from `application.properties`, and run the app from any IDE or terminal without IntelliJ-specific configuration.
+> **How Environment Loading Works:**
+> - `DotenvEnvironmentPostProcessor` automatically loads `backend/.env` into Spring's `Environment` before `backend/src/main/resources/application.properties` placeholders are resolved (supporting both `UPPER_CASE` env-var keys and `lowercase.dotted` Spring property keys, stripping optional quotes/whitespace, and ignoring unresolved `${...}` template lines).
+> - External OS/container environment variables always take precedence over `backend/.env` (`systemEnvironment` is evaluated before `dotenvPropertySource-systemEnvironment`).
 
-### Backend `.env` (Project Root)
+### Backend `.env` (`backend/.env`)
 
-When configuring your local root `.env` (or OS environment variables), the codebase references the following variables:
+When configuring your local `backend/.env` (or OS environment variables), the codebase references the following variables:
 
-| Environment Variable | Current Fallback in `application.properties` / Java | Used By | Purpose |
+| Environment Variable | Default in `application.properties` / Java | Used By | Purpose |
 | --- | --- | --- | --- |
+| `SERVER_PORT` | `8080` | `application.properties` | Spring Boot HTTP server port |
+| `APP_CATALYST_ENABLED` | `true` | `application.properties`, `ProductRepository`, `CartRepository` | Enables Catalyst DataStore for products and carts (`false` uses in-memory fallback) |
 | `APP_CORS_ALLOWED_ORIGIN` | `http://localhost:2000` | `application.properties`, `SecurityConfig`, `CorsConfig` | Allowed browser origin for CORS |
-| `FRONTEND_URL` | `http://localhost:2000` | `application.properties` | Frontend base URL (primary placeholder checked first) |
-| `APP_FRONTEND_URL` | `http://localhost:2000` (`5173` fallback in `PaymentService`) | `application.properties`, `SecurityConfig`, `CorsConfig`, `PaymentService` | Frontend base URL for OAuth2 and Stripe redirects |
-| `ZOHO_CATALYST_PROJECT_ID` | `demo-project-id` *(dummy)* | `application.properties`, `CatalystClient` | Zoho Catalyst project ID |
-| `ZOHO_CATALYST_PROJECT_KEY` | `demo-project-key` *(dummy)* | `application.properties` | Zoho Catalyst project key |
+| `FRONTEND_URL` | `http://localhost:2000` | `application.properties` | Frontend base URL (checked before `APP_FRONTEND_URL`) |
+| `APP_FRONTEND_URL` | `http://localhost:2000` | `application.properties`, `SecurityConfig`, `CorsConfig`, `PaymentService` | Frontend base URL for OAuth2 and Stripe redirects |
+| `ZOHO_CATALYST_PROJECT_ID` | **Required** (none) | `application.properties`, `CatalystClient` | Zoho Catalyst project ID |
+| `ZOHO_CATALYST_PROJECT_KEY` | Empty string (`""`) | `application.properties` | Zoho Catalyst project key |
 | `ZOHO_CATALYST_PROJECT_DOMAIN` | `https://api.catalyst.zoho.in` | `application.properties`, `CatalystClient` | Zoho Catalyst API domain |
 | `ZOHO_CATALYST_ENVIRONMENT` | `Development` | `application.properties`, `CatalystClient` | Catalyst `Environment` request header |
-| `ZOHO_CATALYST_CLIENT_ID` | `demo-client-id` *(dummy)* | `application.properties`, `OAuthManager` | Catalyst OAuth client ID |
-| `ZOHO_CATALYST_CLIENT_SECRET` | `demo-client-secret` *(dummy)* | `application.properties`, `OAuthManager` | Catalyst OAuth client secret |
-| `ZOHO_CATALYST_REFRESH_TOKEN` | `demo-refresh-token` *(dummy)* | `application.properties`, `OAuthManager` | Catalyst refresh token for DataStore BaaS API calls |
+| `ZOHO_OAUTH_SCOPES` | `openid,email,profile` | `application.properties` | Zoho OAuth2/OIDC scopes |
+| `ZOHO_CATALYST_CLIENT_ID` | **Required** (none) | `application.properties`, `OAuthManager` | Catalyst OAuth client ID |
+| `ZOHO_CATALYST_CLIENT_SECRET` | **Required** (none) | `application.properties`, `OAuthManager` | Catalyst OAuth client secret |
+| `ZOHO_CATALYST_REFRESH_TOKEN` | **Required** (none) | `application.properties`, `OAuthManager` | Catalyst refresh token for DataStore BaaS API calls |
 | `ZOHO_ACCOUNTS_URL` | `https://accounts.zoho.in` | `application.properties`, `ZohoTokenService` | Zoho Accounts data center URL |
-| `ZOHO_CLIENT_ID` | `demo-zoho-client-id` *(dummy)* | `application.properties`, Spring OAuth2, `ZohoTokenService` | Zoho OAuth2 login client ID |
-| `ZOHO_CLIENT_SECRET` | `demo-zoho-client-secret` *(dummy)* | `application.properties`, Spring OAuth2, `ZohoTokenService` | Zoho OAuth2 login client secret |
+| `ZOHO_CLIENT_ID` | **Required** (none) | `application.properties`, Spring OAuth2, `ZohoTokenService` | Zoho OAuth2 login client ID |
+| `ZOHO_CLIENT_SECRET` | **Required** (none) | `application.properties`, Spring OAuth2, `ZohoTokenService` | Zoho OAuth2 login client secret |
 | `ZOHO_REDIRECT_URI` | `http://localhost:8080/auth/zoho/callback` | `application.properties`, Spring OAuth2 | Zoho OAuth2 callback URI |
-| `STRIPE_SECRET_KEY` | `sk_test_dummy` *(dummy)* | `application.properties`, `StripeConfig` | Stripe secret API key |
-| `STRIPE_PUBLISHABLE_KEY` | `pk_test_dummy` *(dummy)* | `application.properties` | Stripe publishable key |
-| `STRIPE_WEBHOOK_SECRET` | `whsec_test_dummy` *(dummy)* | `application.properties`, `PaymentService` | Stripe webhook signing secret |
+| `STRIPE_SECRET_KEY` | **Required** (none) | `application.properties`, `StripeConfig` | Stripe secret API key |
+| `STRIPE_PUBLISHABLE_KEY` | **Required** (none) | `application.properties` | Stripe publishable key |
+| `STRIPE_WEBHOOK_SECRET` | Empty string (`""`; required by `/api/payments/webhook` at runtime) | `application.properties`, `PaymentService` | Stripe webhook signing secret |
 
-> **Additional Notes from Current Files:**
-> - `server.port=8080` and `app.catalyst.enabled=true` are currently fixed in `src/main/resources/application.properties` (though `.env.example` lists `SERVER_PORT=8080`, `APP_CATALYST_ENABLED=true`, `SPRING_APPLICATION_NAME=E-commerce`, and optional `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` placeholders).
-> - `.idea/workspace.xml` also includes IntelliJ Catalyst CLI/tool variables (`X_ZOHO_CATALYST_ACCOUNTS_URL`, `X_ZOHO_CATALYST_CONSOLE_URL`), which are not read by Spring Boot Java code.
+> **Notes:**
+> - `backend/.env.example` also lists `SPRING_APPLICATION_NAME=E-commerce` and optional `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` placeholders.
+> - `DotenvEnvironmentPostProcessor` also supports `app.dotenv.path` (override `.env` path) and `app.dotenv.required=true` (fail startup if `.env` is missing).
+> - `.idea/workspace.xml` may contain legacy IntelliJ Run Configuration variables (`X_ZOHO_CATALYST_ACCOUNTS_URL`, `X_ZOHO_CATALYST_CONSOLE_URL`, etc.) that are not required by Spring Boot.
 
 ### `application.properties` and Dotenv Integration
 
-`src/main/resources/application.properties` already maps properties using Spring placeholders, for example:
+`backend/src/main/resources/application.properties` binds all configuration from environment variables using Spring `${...}` placeholders without dummy secret defaults, for example:
 
 ```properties
-stripe.secret-key=${STRIPE_SECRET_KEY:sk_test_dummy}
-stripe.publishable-key=${STRIPE_PUBLISHABLE_KEY:pk_test_dummy}
-stripe.webhook-secret=${STRIPE_WEBHOOK_SECRET:whsec_test_dummy}
-zoho.client-id=${ZOHO_CLIENT_ID:demo-zoho-client-id}
-zoho.client-secret=${ZOHO_CLIENT_SECRET:demo-zoho-client-secret}
+stripe.secret-key=${STRIPE_SECRET_KEY}
+stripe.publishable-key=${STRIPE_PUBLISHABLE_KEY}
+stripe.webhook-secret=${STRIPE_WEBHOOK_SECRET:}
+zoho.client-id=${ZOHO_CLIENT_ID}
+zoho.client-secret=${ZOHO_CLIENT_SECRET}
+spring.security.oauth2.client.registration.zoho.client-id=${ZOHO_CLIENT_ID:${zoho.client-id}}
+spring.security.oauth2.client.registration.zoho.client-secret=${ZOHO_CLIENT_SECRET:${zoho.client-secret}}
 ```
 
-In the planned `.env` setup:
-1. **Spring Boot does not automatically load a generic `.env` file by default**, so a dedicated dotenv-loading mechanism (for example `me.paulschwarz:springboot4-dotenv` for Spring Boot 4) must be configured to load the root `.env` before `application.properties` placeholders are resolved.
-2. `application.properties` should remove dummy credential defaults (`demo-*`, `*_dummy`) so it binds strictly from environment variables (e.g., `stripe.secret-key=${STRIPE_SECRET_KEY}`, `zoho.client-id=${ZOHO_CLIENT_ID}`, `zoho.client-secret=${ZOHO_CLIENT_SECRET}`) and fails clearly when mandatory credentials are missing.
-3. OS/container environment variables in production must continue to take precedence over `.env`.
+`DotenvEnvironmentPostProcessor` loads `backend/.env` during Spring Boot's `EnvironmentPostProcessor` phase so these placeholders resolve automatically across IntelliJ IDEA, VS Code, and terminal runs while preserving OS environment variable precedence in production.
 
 ### Frontend `.env` (`frontend/.env`)
 
@@ -386,10 +389,10 @@ VITE_API_BASE_URL=http://localhost:8080
 ### `.env.example` Templates
 
 Two example templates are tracked in Git with placeholder values only:
-- Root **`.env.example`** — backend configuration template; copy to `.env` in the repository root (`cp .env.example .env`). Note that the current `.env.example` contains a minor typo on line 9 (`http://localhost:2000h`, which should be `http://localhost:2000` in your `.env`) and a trailing ` ``` ` on line 59.
+- **`backend/.env.example`** — backend configuration template; copy to `backend/.env` (`cp backend/.env.example backend/.env`).
 - **`frontend/.env.example`** — frontend configuration template (`VITE_API_BASE_URL= Your-domain-url`); copy to `frontend/.env` and set `VITE_API_BASE_URL=http://localhost:8080` for local development.
 
-`.gitignore` excludes `.env` and `.env.*` at all directory levels while keeping `!.env.example` and `!frontend/.env.example` tracked. Never commit actual credentials to GitHub.
+`.gitignore` excludes `.env` and `.env.*` at all directory levels while keeping `!backend/.env.example` and `!frontend/.env.example` tracked. Never commit actual credentials to GitHub.
 
 ---
 
@@ -560,25 +563,28 @@ sequenceDiagram
 
 ## 16. Testing Instructions
 
-Run the complete test suite from the repository root:
+Run the complete test suite from `backend/`:
 
 ```sh
+cd backend
 ./mvnw test
 ```
 
 Run a specific test class:
 
 ```sh
+cd backend
 ./mvnw test -Dtest=OrderServiceTest
 ```
 
-### Existing Test Classes (11 Files)
+### Existing Test Classes (12 Files)
 
 - `AuthControllerTest` — `/auth/me`, `/auth/logout`, `/auth/zoho/login`, `/auth/zoho/token/status`
 - `CartRepositoryTest` — Catalyst and local cart repository behavior
 - `CustomerAndOrderControllerTest` — Customer and order REST endpoints and validation
 - `CustomerRepositoryTest` — Catalyst `Customer` table mapping and queries
 - `CustomerServiceTest` — Registration, email normalization/uniqueness, Zoho user provisioning
+- `DotenvEnvironmentPostProcessorTest` — Automatic `.env` loading, placeholder resolution, root/subdirectory discovery, and OS env precedence
 - `ECommerceApplicationTests` — Spring Boot `@SpringBootTest` context load smoke test
 - `OrderServiceTest` — Order creation, stock validation, compensation on failure, cancellation, fulfillment
 - `ProductAndCartControllerTest` — Product and cart REST endpoints and validation
@@ -590,12 +596,13 @@ Run a specific test class:
 
 ## 17. Troubleshooting
 
-- **Backend starts with dummy credentials or fails Catalyst/Stripe calls when run from terminal:**
-  - Spring Boot does not load `.env` automatically yet; export variables in your shell (`set -a; source .env; set +a`) before `./mvnw spring-boot:run`, or run via IntelliJ where Run Configuration variables are currently defined, until a dotenv loader is added.
+- **Backend fails to start with placeholder resolution error:**
+  - Verify `backend/.env` exists and defines all required Stripe, Zoho OAuth, and Zoho Catalyst credentials, or export them as OS environment variables.
+  - Changes to `backend/.env` appear ignored in IntelliJ: check `Run -> Edit Configurations -> ECommerceApplication` and remove any old manually defined environment variables, because OS/IDE environment variables override `backend/.env`.
 - **Frontend shows `"Could not connect to the shop API"` or requests hit `localhost:2000/api/...`:**
   - Ensure `frontend/.env` sets `VITE_API_BASE_URL=http://localhost:8080`, then restart `npm run dev`.
 - **CORS errors in the browser console:**
-  - Verify the frontend runs on `http://localhost:2000` (`frontend/vite.config.js`) and `APP_CORS_ALLOWED_ORIGIN` / `APP_FRONTEND_URL` match that origin. (Fix the `http://localhost:2000h` typo when copying `.env.example`.)
+  - Verify the frontend runs on `http://localhost:2000` (`frontend/vite.config.js`) and `APP_CORS_ALLOWED_ORIGIN` / `APP_FRONTEND_URL` match that origin.
 - **Zoho OAuth `redirect_uri_mismatch`:**
   - Confirm `ZOHO_REDIRECT_URI` (`http://localhost:8080/auth/zoho/callback` locally) matches the Authorized Redirect URI in the Zoho API Console and `ZOHO_ACCOUNTS_URL` matches your Zoho data center.
 - **Stripe webhook returns `400 Bad Request` (`Missing Stripe signature` or `Invalid Stripe signature`):**
@@ -607,8 +614,8 @@ Run a specific test class:
 
 ## 18. Security Considerations
 
-- **Never commit `.env` or `frontend/.env`:** `.gitignore` ignores `.env` and `.env.*` while keeping `!.env.example` and `!frontend/.env.example` tracked.
+- **Never commit `backend/.env` or `frontend/.env`:** `.gitignore` ignores `.env` and `.env.*` while keeping `!backend/.env.example` and `!frontend/.env.example` tracked.
 - **Never store backend secrets in `frontend/.env`:** Any `VITE_` environment variable is exposed in browser JavaScript.
-- **Remove dummy credential fallbacks:** Replace `demo-*` and `*_dummy` defaults in `src/main/resources/application.properties` and `PaymentService` when transitioning to `.env`-based configuration so missing secrets fail explicitly instead of silently using dummy values.
+- **No dummy credential fallbacks:** `backend/src/main/resources/application.properties` and `PaymentService` do not fall back to `demo-*` or `*_dummy` secrets; missing mandatory keys fail placeholder resolution at startup, and `/api/payments/webhook` fails explicitly if `STRIPE_WEBHOOK_SECRET` is blank.
 - **Webhook verification & idempotency:** `PaymentService.handleWebhook` validates `Stripe-Signature` using `Webhook.constructEvent`, verifies order ID, total amount (paise), and currency (`INR`), and tracks processed event IDs in Catalyst `StripeEvent`.
 - **Session cookies & endpoint access:** `application.properties` enables `http-only=true` and `same-site=lax` for session cookies. Note that `SecurityConfig` currently disables CSRF and permits `anyRequest().permitAll()` for SPA compatibility; restrict write/admin endpoints and enable appropriate authorization controls before production exposure.
