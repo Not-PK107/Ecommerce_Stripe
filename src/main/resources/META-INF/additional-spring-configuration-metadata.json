@@ -1,0 +1,8 @@
+{
+  "properties": [
+    {
+      "name": "stripe.publishable-key",
+      "type": "java.lang.String",
+      "description": "Description for stripe.publishable-key."
+  }
+] }
