@@ -1,0 +1,30 @@
+{
+  "defaults": {
+    "project": 1,
+    "env": 1
+  },
+  "actives": {
+    "project": 1,
+    "env": 1
+  },
+  "projects": [
+    {
+      "idx": 1,
+      "id": "89157000000044364",
+      "name": "PKstore",
+      "domain": {
+        "id": "50047523867",
+        "name": "pkstore-60092590338.development"
+      },
+      "timezone": "Asia/Kolkata",
+      "env": [
+        {
+          "idx": 1,
+          "id": "60092590338",
+          "name": "Development",
+          "type": 3
+        }
+      ]
+    }
+  ]
+}
