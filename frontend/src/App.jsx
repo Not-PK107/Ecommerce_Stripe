@@ -177,25 +177,51 @@ function App() {
     }
   }
 
-  function openCheckout() {
+  function populateCheckoutFromCustomer(customer) {
+    const rawAddr = typeof customer?.address === "string" ? customer.address.trim() : "";
+    const rawPhone = customer?.phone != null ? String(customer.phone).trim() : "";
+    const defaultAddr = rawAddr && !rawAddr.includes("Please provide") ? rawAddr : "";
+    const defaultPh = rawPhone && rawPhone !== "9999999999" ? rawPhone.replace(/\D/g, "").slice(-10) : "";
+    setCheckoutAddress(defaultAddr);
+    setCheckoutPhone(defaultPh);
+    setCheckoutError("");
+  }
+
+  function openCheckout(customerOverride) {
+    const user = customerOverride || currentUser;
     setCartOpen(false);
-    if (!currentUser) {
+    if (!user) {
       setPendingCheckout(true);
       setAuthModalOpen(true);
       setNotice("Please sign in or create an account to checkout.");
       setTimeout(() => setNotice(""), 3500);
       return;
     }
-    const defaultAddr = currentUser.address && !currentUser.address.includes("Please provide") ? currentUser.address : "";
-    const defaultPh = currentUser.phone && currentUser.phone !== "9999999999" ? currentUser.phone : "";
-    setCheckoutAddress(defaultAddr);
-    setCheckoutPhone(defaultPh);
-    setCheckoutError("");
+    populateCheckoutFromCustomer(user);
     setCheckoutOpen(true);
   }
 
   useEffect(() => {
     loadProducts();
+
+    const savedUser = getSavedUser();
+    if (savedUser?.customerId) {
+      apiRequest(`/api/customers/${encodeURIComponent(savedUser.customerId)}`)
+        .then((freshCustomer) => {
+          if (freshCustomer && typeof freshCustomer.customerId === "string") {
+            setCurrentUser((prev) => {
+              if (prev?.customerId !== savedUser.customerId) {
+                return prev;
+              }
+              window.localStorage.setItem("form-field-user", JSON.stringify(freshCustomer));
+              return freshCustomer;
+            });
+          }
+        })
+        .catch(() => {
+          // Keep cached user if backend refresh fails
+        });
+    }
 
     const urlParams = new URLSearchParams(window.location.search);
     const checkoutResult = urlParams.get("checkout");
@@ -449,7 +475,9 @@ function App() {
 
       if (pendingCheckout) {
         setPendingCheckout(false);
-        setCheckoutOpen(true);
+        openCheckout(customer);
+      } else {
+        populateCheckoutFromCustomer(customer);
       }
     } catch (err) {
       setAuthError(err.message || "Failed to sign in. Please verify your email.");
@@ -525,7 +553,9 @@ function App() {
 
       if (pendingCheckout) {
         setPendingCheckout(false);
-        setCheckoutOpen(true);
+        openCheckout(customer);
+      } else {
+        populateCheckoutFromCustomer(customer);
       }
     } catch (err) {
       setAuthError(err.message || "Registration failed. Please check your information.");
@@ -539,6 +569,10 @@ function App() {
     window.localStorage.removeItem("form-field-user");
     setCart([]);
     window.localStorage.removeItem("form-field-cart");
+    setPendingCheckout(false);
+    setCheckoutAddress("");
+    setCheckoutPhone("");
+    setCheckoutError("");
     setNotice("You have signed out.");
     setTimeout(() => setNotice(""), 2600);
   }
@@ -646,7 +680,7 @@ function App() {
               </button>
             </div>
           ) : (
-            <button className="auth-button" onClick={() => { setAuthTab("login"); setAuthModalOpen(true); }}>
+            <button className="auth-button" onClick={() => { setPendingCheckout(false); setAuthTab("login"); setAuthError(""); setAuthModalOpen(true); }}>
               <Icon name="user" size={16} />
               <span>Sign in</span>
             </button>
@@ -885,14 +919,14 @@ function App() {
 
       {/* Customer Authentication Modal (Login & Register) */}
       {authModalOpen && (
-        <div className="overlay modal-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget && !authBusy) setAuthModalOpen(false); }}>
+        <div className="overlay modal-overlay" onMouseDown={(event) => { if (event.target === event.currentTarget && !authBusy) { setAuthModalOpen(false); setPendingCheckout(false); } }}>
           <section className="auth-modal" aria-labelledby="auth-modal-title">
             <div className="drawer-header">
               <div>
                 <p className="eyebrow">{pendingCheckout ? "CHECKOUT REQUIREMENT" : "WELCOME"}</p>
                 <h2 id="auth-modal-title">{authTab === "login" ? "Sign in to your account" : "Create your account"}</h2>
               </div>
-              <button className="icon-button" onClick={() => setAuthModalOpen(false)} disabled={authBusy} aria-label="Close sign in"><Icon name="close" /></button>
+              <button className="icon-button" onClick={() => { setAuthModalOpen(false); setPendingCheckout(false); }} disabled={authBusy} aria-label="Close sign in"><Icon name="close" /></button>
             </div>
 
             {pendingCheckout && (
