@@ -5,6 +5,7 @@ import org.springframework.boot.EnvironmentPostProcessor;
 import org.springframework.boot.SpringApplication;
 import org.springframework.core.Ordered;
 import org.springframework.core.env.ConfigurableEnvironment;
+import org.springframework.core.env.MapPropertySource;
 import org.springframework.core.env.StandardEnvironment;
 import org.springframework.core.env.SystemEnvironmentPropertySource;
 
@@ -35,37 +36,54 @@ public class DotenvEnvironmentPostProcessor implements EnvironmentPostProcessor,
 
     @Override
     public void postProcessEnvironment(@NonNull ConfigurableEnvironment environment, @NonNull SpringApplication application) {
-        if (environment.getPropertySources().contains(DOTENV_PROPERTY_SOURCE_NAME)) {
-            return;
-        }
+        if (!environment.getPropertySources().contains(DOTENV_PROPERTY_SOURCE_NAME)) {
+            boolean required = Boolean.parseBoolean(environment.getProperty(DOTENV_REQUIRED_PROPERTY, "false"));
+            Path envFile = resolveDotenvFile(environment);
+            if (envFile == null) {
+                if (required) {
+                    throw new IllegalStateException(
+                            "Required .env file could not be found. Expected backend/.env or .env in the project directory.");
+                }
+            } else {
+                if (!Files.isReadable(envFile)) {
+                    throw new IllegalStateException("Found .env file at " + envFile + " but it is not readable.");
+                }
 
-        boolean required = Boolean.parseBoolean(environment.getProperty(DOTENV_REQUIRED_PROPERTY, "false"));
-        Path envFile = resolveDotenvFile(environment);
-        if (envFile == null) {
-            if (required) {
-                throw new IllegalStateException(
-                        "Required .env file could not be found. Expected backend/.env or .env in the project directory.");
+                Map<String, Object> entries = parseDotenvFile(envFile);
+                if (!entries.isEmpty()) {
+                    var propertySource = new SystemEnvironmentPropertySource(DOTENV_PROPERTY_SOURCE_NAME, entries);
+                    var sources = environment.getPropertySources();
+                    if (sources.contains(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME)) {
+                        sources.addAfter(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME, propertySource);
+                    } else if (sources.contains(StandardEnvironment.SYSTEM_PROPERTIES_PROPERTY_SOURCE_NAME)) {
+                        sources.addAfter(StandardEnvironment.SYSTEM_PROPERTIES_PROPERTY_SOURCE_NAME, propertySource);
+                    } else {
+                        sources.addFirst(propertySource);
+                    }
+                }
             }
+        }
+
+        applyAppSailListenPort(environment);
+    }
+
+    private static void applyAppSailListenPort(ConfigurableEnvironment environment) {
+        String catalystPort = environment.getProperty("X_ZOHO_CATALYST_LISTEN_PORT");
+        if (catalystPort == null || catalystPort.isBlank()) {
             return;
         }
-
-        if (!Files.isReadable(envFile)) {
-            throw new IllegalStateException("Found .env file at " + envFile + " but it is not readable.");
-        }
-
-        Map<String, Object> entries = parseDotenvFile(envFile);
-        if (entries.isEmpty()) {
-            return;
-        }
-
-        var propertySource = new SystemEnvironmentPropertySource(DOTENV_PROPERTY_SOURCE_NAME, entries);
         var sources = environment.getPropertySources();
-        if (sources.contains(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME)) {
-            sources.addAfter(StandardEnvironment.SYSTEM_ENVIRONMENT_PROPERTY_SOURCE_NAME, propertySource);
-        } else if (sources.contains(StandardEnvironment.SYSTEM_PROPERTIES_PROPERTY_SOURCE_NAME)) {
-            sources.addAfter(StandardEnvironment.SYSTEM_PROPERTIES_PROPERTY_SOURCE_NAME, propertySource);
+        if (sources.contains("catalystAppSailPortPropertySource")) {
+            return;
+        }
+        MapPropertySource portSource = new MapPropertySource(
+                "catalystAppSailPortPropertySource",
+                Map.of("server.port", catalystPort.trim())
+        );
+        if (sources.contains("Inlined Test Properties")) {
+            sources.addAfter("Inlined Test Properties", portSource);
         } else {
-            sources.addFirst(propertySource);
+            sources.addFirst(portSource);
         }
     }
 

@@ -1,16 +1,18 @@
 package com.example.ecommerce;
 
-import com.example.ecommerce.config.CatalystClient;
 import com.example.ecommerce.model.Customer;
 import com.example.ecommerce.repository.CustomerRepository;
+import com.example.ecommerce.service.CatalystDataStoreService;
+import com.zc.component.object.ZCRowObject;
 import org.junit.jupiter.api.Test;
-import tools.jackson.databind.ObjectMapper;
 
-import java.util.Map;
+import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
-import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -19,9 +21,8 @@ import static org.mockito.Mockito.when;
 
 class CustomerRepositoryTest {
 
-    private final CatalystClient catalystClient = mock(CatalystClient.class);
-    private final CustomerRepository repository =
-            new CustomerRepository(catalystClient, new ObjectMapper());
+    private final CatalystDataStoreService dataStore = mock(CatalystDataStoreService.class);
+    private final CustomerRepository repository = new CustomerRepository(dataStore);
 
     @Test
     void insert_SetsRowIdAsCustomerIdFromCatalystResponse() {
@@ -31,10 +32,12 @@ class CustomerRepositoryTest {
                 .phone("1234567890")
                 .address("1 Example Street")
                 .build();
-        when(catalystClient.insertRows(eq("Customer"), argThat(rows ->
-                "Customer".equals(rows.get(0).get("customerName"))
-                        && "customer@example.com".equals(rows.get(0).get("email")))))
-                .thenReturn("{\"data\":[{\"ROWID\":\"123\"}]}");
+        ZCRowObject insertedRow = ZCRowObject.getInstance();
+        insertedRow.set("ROWID", 123L);
+        when(dataStore.insertRow(eq("Customer"), argThat(row ->
+                "Customer".equals(row.get("customerName"))
+                        && "customer@example.com".equals(row.get("email")))))
+                .thenReturn(insertedRow);
 
         Customer inserted = repository.insert(customer);
 
@@ -44,9 +47,14 @@ class CustomerRepositoryTest {
 
     @Test
     void findByIdAndUpdate_UsesRowIdForLookupAndUpdate() {
-        when(catalystClient.getAllRows("Customer")).thenReturn(
-                "{\"data\":[{\"ROWID\":\"123\",\"customerName\":\"Customer\","
-                        + "\"email\":\"customer@example.com\",\"phone\":\"1234567890\",\"address\":\"1 Example Street\"}]}");
+        ZCRowObject row = ZCRowObject.getInstance();
+        row.set("ROWID", 123L);
+        row.set("customerName", "Customer");
+        row.set("email", "customer@example.com");
+        row.set("phone", "1234567890");
+        row.set("address", "1 Example Street");
+
+        when(dataStore.getRowById("Customer", "123")).thenReturn(Optional.of(row));
 
         Customer customer = repository.findById("123");
 
@@ -56,21 +64,35 @@ class CustomerRepositoryTest {
         customer.setCustomerName("Updated Customer");
         repository.update(customer);
 
-        verify(catalystClient).updateRows(eq("Customer"), argThat(rows -> {
-            Map<String, Object> row = rows.get(0);
-            return Long.valueOf(123).equals(row.get("ROWID"))
-                    && "Updated Customer".equals(row.get("customerName"));
-        }));
+        verify(dataStore).updateRow(eq("Customer"), eq("123"), argThat(fields ->
+                "Updated Customer".equals(fields.get("customerName"))));
+    }
+
+    @Test
+    void findByEmailAndExistsByEmail_MatchesCaseInsensitively() {
+        ZCRowObject row = ZCRowObject.getInstance();
+        row.set("ROWID", 123L);
+        row.set("customerName", "Customer");
+        row.set("email", "customer@example.com");
+        when(dataStore.getAllRows("Customer")).thenReturn(List.of(row));
+
+        Customer found = repository.findByEmail("Customer@Example.com");
+        assertNotNull(found);
+        assertEquals("123", found.getCustomerId());
+
+        assertTrue(repository.existsByEmail("CUSTOMER@example.com", null));
+        assertFalse(repository.existsByEmail("CUSTOMER@example.com", "123"));
     }
 
     @Test
     void deleteById_DeletesCatalystRowMatchingRowId() {
-        when(catalystClient.getAllRows("Customer")).thenReturn(
-                "{\"data\":[{\"ROWID\":\"123\",\"customerName\":\"Customer\"}]}");
+        ZCRowObject row = ZCRowObject.getInstance();
+        row.set("ROWID", 123L);
+        row.set("customerName", "Customer");
+        when(dataStore.getRowById("Customer", "123")).thenReturn(Optional.of(row));
 
         repository.deleteById("123");
 
-        verify(catalystClient).deleteRow("Customer", "123");
+        verify(dataStore).deleteRow("Customer", "123");
     }
 }
-

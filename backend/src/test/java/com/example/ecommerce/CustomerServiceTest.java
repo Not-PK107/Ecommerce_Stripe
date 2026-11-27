@@ -99,42 +99,6 @@ class CustomerServiceTest {
         assertThrows(IllegalArgumentException.class, () -> service.register(request));
     }
 
-    @Test
-    void findOrCreateForZohoUser_WhenCustomerExists_ReturnsExisting() {
-        CustomerRepository repository = mock(CustomerRepository.class);
-        Customer customer = Customer.builder()
-                .customerId("89157000000055001")
-                .customerName("Zoho User")
-                .email("zoho@example.com")
-                .phone("9876543210")
-                .address("123 Street")
-                .build();
-        when(repository.findByEmail("zoho@example.com")).thenReturn(customer);
-        CustomerService service = new CustomerService(repository);
-
-        CustomerResponse response = service.findOrCreateForZohoUser("zoho@example.com", "Zoho User");
-        assertEquals("89157000000055001", response.getCustomerId());
-        assertEquals("zoho@example.com", response.getEmail());
-    }
-
-    @Test
-    void findOrCreateForZohoUser_WhenCustomerDoesNotExist_CreatesNewCustomer() {
-        CustomerRepository repository = mock(CustomerRepository.class);
-        when(repository.findByEmail("newzoho@example.com")).thenReturn(null);
-        when(repository.insert(org.mockito.ArgumentMatchers.any(Customer.class))).thenAnswer(invocation -> {
-            Customer c = invocation.getArgument(0);
-            c.setCustomerId("89157000000099001");
-            return c;
-        });
-        CustomerService service = new CustomerService(repository);
-
-        CustomerResponse response = service.findOrCreateForZohoUser("newzoho@example.com", "New User");
-        assertEquals("89157000000099001", response.getCustomerId());
-        assertEquals("newzoho@example.com", response.getEmail());
-        assertEquals("New User", response.getCustomerName());
-        assertEquals("9999999999", response.getPhone());
-    }
-
     private CustomerRequest request() {
         CustomerRequest request = new CustomerRequest();
         request.setCustomerName("Customer");

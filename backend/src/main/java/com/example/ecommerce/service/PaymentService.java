@@ -2,6 +2,7 @@ package com.example.ecommerce.service;
 
 import com.example.ecommerce.dto.OrderItemResponse;
 import com.example.ecommerce.dto.OrderResponse;
+import com.example.ecommerce.exception.ConflictException;
 import com.example.ecommerce.model.Payment;
 import com.example.ecommerce.repository.PaymentRepository;
 import com.stripe.StripeClient;
@@ -139,12 +140,55 @@ public class PaymentService {
     }
 
     public OrderResponse confirmPayment(String orderId) {
-        Payment payment = paymentRepository.findByOrderId(orderId).orElse(null);
-        if (payment != null && !"PAID".equals(payment.getPaymentStatus())) {
-            payment.setPaymentStatus("PAID");
-            payment.setUpdatedAt(Instant.now().toString());
-            paymentRepository.update(payment);
+        orderService.getById(orderId);
+        Payment payment = paymentRepository.findByOrderId(orderId)
+                .orElseThrow(() -> new IllegalStateException("Payment not found for order: " + orderId));
+
+        if ("PAID".equals(payment.getPaymentStatus())) {
+            return orderService.fulfillOrder(orderId);
         }
+
+        String sessionId = payment.getStripeSessionId();
+        if (sessionId == null || sessionId.isBlank()) {
+            throw new IllegalStateException("Stripe checkout session ID is missing for order: " + orderId);
+        }
+
+        Session session;
+        try {
+            session = stripeClient.v1().checkout().sessions().retrieve(sessionId);
+        } catch (StripeException ex) {
+            throw new IllegalStateException("Failed to verify Stripe checkout session", ex);
+        }
+        if (session == null) {
+            throw new IllegalStateException("Stripe checkout session payload was missing");
+        }
+
+        String metadataOrderId = session.getMetadata() == null ? null : session.getMetadata().get("orderId");
+        if (metadataOrderId != null && !metadataOrderId.isBlank() && !orderId.equals(metadataOrderId)) {
+            throw new IllegalStateException("Stripe session order does not match stored payment");
+        }
+
+        if (!"paid".equalsIgnoreCase(session.getPaymentStatus())) {
+            throw new ConflictException("Payment has not been completed in Stripe");
+        }
+
+        if (payment.getAmount() != null
+                && session.getAmountTotal() != null
+                && !payment.getAmount().equals(session.getAmountTotal())) {
+            throw new IllegalStateException("Stripe session total does not match the stored payment amount");
+        }
+        if (session.getCurrency() != null
+                && payment.getCurrency() != null
+                && !payment.getCurrency().equalsIgnoreCase(session.getCurrency())) {
+            throw new IllegalStateException("Stripe session currency does not match the stored payment currency");
+        }
+
+        if (session.getPaymentIntent() != null && !session.getPaymentIntent().isBlank()) {
+            payment.setStripePaymentIntentId(session.getPaymentIntent());
+        }
+        payment.setPaymentStatus("PAID");
+        payment.setUpdatedAt(Instant.now().toString());
+        paymentRepository.update(payment);
         return orderService.fulfillOrder(orderId);
     }
 

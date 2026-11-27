@@ -86,33 +86,6 @@ public class CustomerService {
         customerRepository.deleteById(customerId);
     }
 
-    public synchronized CustomerResponse findOrCreateForZohoUser(String email, String name) {
-        String normalizedEmail = normalizeEmail(email);
-        Customer existing = customerRepository.findByEmail(normalizedEmail);
-        if (existing != null) {
-            return toResponse(existing);
-        }
-
-        // Clean customer name to conform to name validation (no numbers, letters and basic punctuation only)
-        String cleanName = name != null ? name.replaceAll("[0-9]", "").trim() : "";
-        if (cleanName.isBlank() && normalizedEmail.contains("@")) {
-            cleanName = normalizedEmail.substring(0, normalizedEmail.indexOf('@')).replaceAll("[0-9]", "").trim();
-        }
-        if (cleanName.isBlank() || !NAME_PATTERN.matcher(cleanName).matches()) {
-            cleanName = "Zoho Customer";
-        }
-
-        Customer newCustomer = Customer.builder()
-                .customerName(cleanName)
-                .email(normalizedEmail)
-                .phone("9999999999")
-                .address("Please provide delivery address")
-                .createdAt(LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")))
-                .build();
-
-        return toResponse(customerRepository.insert(newCustomer));
-    }
-
     private static final java.util.regex.Pattern NAME_PATTERN =
             java.util.regex.Pattern.compile("^[a-zA-Z\\s.'-]+$");
     private static final java.util.regex.Pattern PHONE_PATTERN =

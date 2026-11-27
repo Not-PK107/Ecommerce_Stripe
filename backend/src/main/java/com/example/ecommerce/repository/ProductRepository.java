@@ -1,11 +1,8 @@
-
 package com.example.ecommerce.repository;
 
 import com.example.ecommerce.model.Product;
-import com.example.ecommerce.config.CatalystClient;
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
-
+import com.example.ecommerce.service.CatalystDataStoreService;
+import com.zc.component.object.ZCRowObject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -13,39 +10,35 @@ import org.springframework.stereotype.Repository;
 
 import java.math.BigDecimal;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
 @Repository
 public class ProductRepository {
 
-    private static final Logger logger =
-            LoggerFactory.getLogger(ProductRepository.class);
+    private static final Logger logger = LoggerFactory.getLogger(ProductRepository.class);
+    private static final String TABLE_NAME = "Product";
 
-    private final ConcurrentHashMap<String, Product> localProducts =
-            new ConcurrentHashMap<>();
-
+    private final ConcurrentHashMap<String, Product> localProducts = new ConcurrentHashMap<>();
     private final AtomicLong idGenerator = new AtomicLong(1);
 
-    private final CatalystClient catalystClient;
-    private final ObjectMapper objectMapper;
+    private final CatalystDataStoreService dataStore;
     private final boolean catalystEnabled;
 
     public ProductRepository(
-            CatalystClient catalystClient,
-            ObjectMapper objectMapper,
+            CatalystDataStoreService dataStore,
             @Value("${app.catalyst.enabled:false}") boolean catalystEnabled) {
 
-        this.catalystClient = catalystClient;
-        this.objectMapper = objectMapper;
+        this.dataStore = dataStore;
         this.catalystEnabled = catalystEnabled;
         initDefaultLocalProducts();
     }
 
-    // Save a new product
     public Product save(Product product) {
-
         if (product.getProductId() != null && !product.getProductId().isBlank()) {
             return update(product);
         }
@@ -55,30 +48,18 @@ public class ProductRepository {
         }
 
         try {
-            String response = catalystClient.insertProduct(product);
-
-            JsonNode root = objectMapper.readTree(response);
-            JsonNode data = root.path("data");
-
-            if (data.isArray() && !data.isEmpty()) {
-                JsonNode insertedProduct = data.get(0);
-
-                if (insertedProduct.has("ROWID")) {
-                    product.setProductId(
-                            insertedProduct.get("ROWID").asText());
-                }
+            ZCRowObject inserted = dataStore.insertRow(TABLE_NAME, toInsertFields(product));
+            String rowId = CatalystDataStoreService.getString(inserted, "ROWID");
+            if (rowId != null && !rowId.isBlank()) {
+                product.setProductId(rowId);
             }
-
             return product;
-
         } catch (Exception ex) {
             throw catalystOperationFailed("save product", ex);
         }
     }
 
-    // Update an existing product
     public Product update(Product product) {
-
         if (product.getProductId() == null || product.getProductId().isBlank()) {
             throw new IllegalArgumentException("Product ID is required for update");
         }
@@ -89,140 +70,126 @@ public class ProductRepository {
         }
 
         try {
-            catalystClient.updateProduct(product);
+            dataStore.updateRow(TABLE_NAME, product.getProductId(), toUpdateFields(product));
             return product;
         } catch (Exception ex) {
             throw catalystOperationFailed("update product " + product.getProductId(), ex);
         }
     }
 
-    // Retrieve all active products
     public List<Product> findAll() {
-
         if (!catalystEnabled) {
-            return localProducts.values()
-                    .stream()
+            return localProducts.values().stream()
                     .filter(Product::isActive)
                     .toList();
         }
 
         try {
-            String response = catalystClient.getAllProducts();
-
-            JsonNode root = objectMapper.readTree(response);
-            JsonNode data = root.path("data");
-
+            List<ZCRowObject> rows = dataStore.getAllRows(TABLE_NAME);
             List<Product> products = new ArrayList<>();
-
-            if (!data.isArray()) {
-                throw new IllegalStateException(
-                        "Unexpected response from Catalyst: data is not an array");
-            }
-
-            for (JsonNode row : data) {
-                Product product = mapJsonToProduct(row);
-
+            for (ZCRowObject row : rows) {
+                Product product = mapRowToProduct(row);
                 if (product != null && product.isActive()) {
                     products.add(product);
                 }
             }
-
             return products;
-
         } catch (Exception ex) {
             throw catalystOperationFailed("list products", ex);
         }
     }
 
-    // Find a product by ID
     public Product findById(String productId) {
-
         if (!catalystEnabled) {
             Product product = localProducts.get(productId);
-
-            return product != null && product.isActive()
-                    ? product : null;
+            return product != null && product.isActive() ? product : null;
         }
 
         try {
-            return findAll()
-                    .stream()
-                    .filter(product ->
-                            productId.equals(product.getProductId()))
-                    .findFirst()
-                    .orElse(null);
-
+            Optional<ZCRowObject> row = dataStore.getRowById(TABLE_NAME, productId);
+            if (row.isEmpty()) {
+                return null;
+            }
+            Product product = mapRowToProduct(row.get());
+            return product != null && product.isActive() ? product : null;
         } catch (Exception ex) {
-            throw catalystOperationFailed(
-                    "find product " + productId, ex);
+            throw catalystOperationFailed("find product " + productId, ex);
         }
     }
 
-    // Soft delete
     public boolean deleteById(String productId) {
-
         if (!catalystEnabled) {
             Product product = localProducts.get(productId);
-
             if (product == null) {
                 return false;
             }
-
             product.setActive(false);
             return true;
         }
 
-        throw new UnsupportedOperationException(
-                "Soft delete is not implemented in CatalystClient yet");
+        try {
+            Product existing = findById(productId);
+            if (existing == null) {
+                return false;
+            }
+            dataStore.updateRow(TABLE_NAME, productId, Map.of("active", false));
+            return true;
+        } catch (Exception ex) {
+            throw catalystOperationFailed("delete product " + productId, ex);
+        }
     }
 
-    // Local storage fallback
     private Product saveLocally(Product product) {
-
-        if (product.getProductId() == null
-                || product.getProductId().isBlank()) {
-
-            product.setProductId(
-                    String.valueOf(idGenerator.getAndIncrement()));
+        if (product.getProductId() == null || product.getProductId().isBlank()) {
+            product.setProductId(String.valueOf(idGenerator.getAndIncrement()));
         }
-
         localProducts.put(product.getProductId(), product);
-
         return product;
     }
 
-    // Convert Catalyst JSON row into Product
-    private Product mapJsonToProduct(JsonNode row) {
+    private Map<String, Object> toInsertFields(Product product) {
+        Map<String, Object> fields = new LinkedHashMap<>();
+        fields.put("prodName", product.getProdName());
+        fields.put("prodDescription", product.getProdDescription());
+        fields.put("prodPrice", product.getProdPrice());
+        fields.put("prodQuantity", product.getProdQuantity());
+        fields.put("prodImage", product.getProdImage());
+        fields.put("prodCategory", product.getProdCategory());
+        fields.put("active", product.isActive());
+        return fields;
+    }
 
-        if (row == null || row.isNull()) {
+    private Map<String, Object> toUpdateFields(Product product) {
+        Map<String, Object> fields = new LinkedHashMap<>();
+        if (product.getProdName() != null) fields.put("prodName", product.getProdName());
+        if (product.getProdDescription() != null) fields.put("prodDescription", product.getProdDescription());
+        if (product.getProdPrice() != null) fields.put("prodPrice", product.getProdPrice());
+        fields.put("prodQuantity", product.getProdQuantity());
+        if (product.getProdImage() != null) fields.put("prodImage", product.getProdImage());
+        if (product.getProdCategory() != null) fields.put("prodCategory", product.getProdCategory());
+        fields.put("active", product.isActive());
+        return fields;
+    }
+
+    private Product mapRowToProduct(ZCRowObject row) {
+        if (row == null) {
             return null;
         }
 
         Product product = new Product();
+        product.setProductId(CatalystDataStoreService.getString(row, "ROWID"));
+        product.setProdName(CatalystDataStoreService.getString(row, "prodName"));
+        product.setProdDescription(CatalystDataStoreService.getString(row, "prodDescription"));
+        product.setProdPrice(CatalystDataStoreService.getNullableBigDecimal(row, "prodPrice"));
+        product.setProdQuantity(CatalystDataStoreService.getInt(row, "prodQuantity", 0));
 
-        product.setProductId(getString(row, "ROWID"));
-        product.setProdName(getString(row, "prodName"));
-        product.setProdDescription(getString(row, "prodDescription"));
-
-        if (row.hasNonNull("prodPrice")) {
-            product.setProdPrice(
-                    new BigDecimal(row.get("prodPrice").asText()));
-        }
-
-        product.setProdQuantity(
-                row.hasNonNull("prodQuantity")
-                        ? row.get("prodQuantity").asInt()
-                        : 0);
-
-        String image = getString(row, "prodImage");
+        String image = CatalystDataStoreService.getString(row, "prodImage");
         if (image == null || image.isBlank()) {
             image = resolveDefaultImage(product.getProductId(), product.getProdName());
         }
         product.setProdImage(image);
-        product.setProdCategory(getString(row, "prodCategory"));
-
-        product.setActive(
-                !row.has("active") || row.get("active").asBoolean(true));
+        product.setProdCategory(CatalystDataStoreService.getString(row, "prodCategory"));
+        product.setActive(CatalystDataStoreService.getBoolean(row, "active", true));
 
         return product;
     }
@@ -291,22 +258,8 @@ public class ProductRepository {
         localProducts.put(p4.getProductId(), p4);
     }
 
-    private String getString(JsonNode row, String field) {
-
-        JsonNode value = row.get(field);
-
-        return value == null || value.isNull()
-                ? null
-                : value.asText();
-    }
-
-    private IllegalStateException catalystOperationFailed(
-            String operation, Exception cause) {
-
+    private IllegalStateException catalystOperationFailed(String operation, Exception cause) {
         logger.error("Failed to {} in Catalyst Product table", operation, cause);
-
-        return new IllegalStateException(
-                "Failed to " + operation + " in Catalyst Product table",
-                cause);
+        return new IllegalStateException("Failed to " + operation + " in Catalyst Product table", cause);
     }
 }

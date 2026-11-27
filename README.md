@@ -71,7 +71,7 @@ A full-stack E-commerce web application built with **Spring Boot 4.1.2 (Java 25)
 | **Build Tool** | Maven Wrapper (`./mvnw` / `mvnw.cmd`) | Apache Maven `3.10.0` |
 | **Frontend Framework** | React & React DOM | `^19.1.0` |
 | **Frontend Bundler** | Vite + `@vitejs/plugin-react` | `^6.3.5` / `^4.7.0` |
-| **Backend Data Store** | Zoho Catalyst BaaS REST API (`/baas/v1/project/{projectId}/table/{table}/row`) | REST (`RestClient`) |
+| **Backend Data Store** | Zoho Catalyst Java SDK (`com.zoho.catalyst:java-sdk:2.5.0`) | `ZCProject`, `ZCObject`, `ZCTable`, `ZCQL` |
 | **Testing** | JUnit 5, Mockito, Spring MockMvc, `spring-boot-starter-test`, `spring-boot-starter-security-test`, `spring-boot-starter-security-oauth2-client-test`, `spring-boot-starter-webflux-test` | Managed by Boot `4.1.2` |
 
 ---
@@ -90,16 +90,17 @@ flowchart LR
     Browser -- "REST JSON + Session Cookie\n(credentials: include)" --> API
     Browser -- "OAuth2 Redirect" --> Security
     Security -- "Authorization Code + Token Exchange" --> ZohoOAuth
-    API -- "Zoho-oauthtoken (OAuthManager)" --> Catalyst
+    API -- "Catalyst Java SDK (ZCProject / ZCAuth)" --> Catalyst
     API -- "StripeClient Checkout Session" --> Stripe
     Stripe -- "Signed Webhook\n(POST /api/payments/webhook)" --> API
 ```
 
 ### Key Architectural Details
 
-- **HTTP Client:** Backend integrations with Zoho Accounts and Zoho Catalyst use Spring's synchronous `RestClient` (`CatalystClient`, `OAuthManager`, `ZohoTokenService`), without JPA/SQL repositories.
+- **Catalyst Java SDK Integration:** Catalyst DataStore access uses the official `com.zoho.catalyst:java-sdk` (`CatalystConfig` initializes `ZCProject` via `ZCProjectConfig` and `ZCAuth`, and `CatalystDataStoreService` wraps `ZCObject`, `ZCTable`, `ZCRowObject`, `ZCRowPagedResponse`, and `ZCQL`).
+- **Zoho Customer OAuth HTTP Client:** Customer Zoho OAuth token refresh (`ZohoTokenService`) remains separate from Catalyst SDK auth and uses Spring's `RestClient` against `${zoho.accounts.base-url}/oauth/v2/token`.
 - **Session & CORS:** `SecurityConfig` configures `CorsConfigurationSource` (`allowCredentials(true)`) allowing `APP_CORS_ALLOWED_ORIGIN`, `app.frontend-url`, and `http://localhost:2000`, HTTP-only session cookies (`SameSite=lax`), and OAuth2 login/logout handlers. `CorsConfig` also registers `WebMvcConfigurer` CORS mappings on `/**`.
-- **Catalyst OAuth Token Management:** `OAuthManager` exchanges `zoho.catalyst.refresh-token` at `https://accounts.zoho.in/oauth/v2/token` and caches the access token in memory with a 60-second expiry buffer.
+- **Catalyst SDK Token Management:** `CatalystConfig` configures `ZCAuth` (`ZCUserScope.ADMIN`) with `zoho.catalyst.client-id`, `zoho.catalyst.client-secret`, `zoho.catalyst.refresh-token`, and data-center accounts URL (`zoho.accounts.base-url` / `X_ZOHO_CATALYST_ACCOUNTS_URL`).
 - **Zoho User OAuth Token Store:** `ZohoTokenService` caches per-user `ZohoUserToken` entries in an in-memory `ConcurrentHashMap` keyed by principal name and email, refreshing expired tokens against `${zoho.accounts.base-url}/oauth/v2/token`.
 
 ---
@@ -123,13 +124,12 @@ E-commerce/
 │       ├── main/
 │       │   ├── java/com/example/ecommerce/
 │       │   │   ├── ECommerceApplication.java
-│       │   │   ├── config/
-│       │   │   │   ├── CatalystClient.java               # Zoho Catalyst BaaS REST client
-│       │   │   │   ├── CorsConfig.java                   # WebMvc CORS configuration
-│       │   │   │   ├── DotenvEnvironmentPostProcessor.java # Automatic .env loader (OS env takes precedence)
-│       │   │   │   ├── OAuthManager.java                 # Catalyst refresh-token manager
-│       │   │   │   ├── SecurityConfig.java               # Spring Security, OAuth2 login, logout, CORS
-│       │   │   │   └── StripeConfig.java                 # Conditional StripeClient bean
+│   │   │   │   ├── config/
+│   │   │   │   │   ├── CatalystConfig.java               # Official Catalyst Java SDK initialization (ZCProject/ZCAuth)
+│   │   │   │   │   ├── CorsConfig.java                   # WebMvc CORS configuration
+│   │   │   │   │   ├── DotenvEnvironmentPostProcessor.java # Automatic .env loader (OS env takes precedence)
+│   │   │   │   │   ├── SecurityConfig.java               # Spring Security, OAuth2 login, logout, CORS
+│   │   │   │   │   └── StripeConfig.java                 # Conditional StripeClient bean
 │       │   │   ├── controller/
 │       │   │   │   ├── AuthController.java
 │       │   │   │   ├── CartController.java
@@ -169,6 +169,7 @@ E-commerce/
 │       │   │   │   └── ProductRepository.java
 │       │   │   └── service/
 │       │   │       ├── CartService.java
+│       │   │       ├── CatalystDataStoreService.java     # Catalyst SDK DataStore & ZCQL gateway
 │       │   │       ├── CustomerService.java
 │       │   │       ├── OrderService.java
 │       │   │       ├── PaymentService.java
@@ -183,12 +184,16 @@ E-commerce/
 │       └── test/java/com/example/ecommerce/
 │           ├── AuthControllerTest.java
 │           ├── CartRepositoryTest.java
+│           ├── CatalystConfigAndDataStoreTest.java
 │           ├── CustomerAndOrderControllerTest.java
 │           ├── CustomerRepositoryTest.java
 │           ├── CustomerServiceTest.java
 │           ├── DotenvEnvironmentPostProcessorTest.java
 │           ├── ECommerceApplicationTests.java
+│           ├── OrderRepositoryTest.java
 │           ├── OrderServiceTest.java
+│           ├── PaymentRepositoryTest.java
+│           ├── PaymentServiceAndControllerTest.java
 │           ├── ProductAndCartControllerTest.java
 │           ├── ProductRepositoryTest.java
 │           ├── ProductServiceTest.java
@@ -339,14 +344,14 @@ When configuring your local `backend/.env` (or OS environment variables), the co
 | `APP_CORS_ALLOWED_ORIGIN` | `http://localhost:2000` | `application.properties`, `SecurityConfig`, `CorsConfig` | Allowed browser origin for CORS |
 | `FRONTEND_URL` | `http://localhost:2000` | `application.properties` | Frontend base URL (checked before `APP_FRONTEND_URL`) |
 | `APP_FRONTEND_URL` | `http://localhost:2000` | `application.properties`, `SecurityConfig`, `CorsConfig`, `PaymentService` | Frontend base URL for OAuth2 and Stripe redirects |
-| `ZOHO_CATALYST_PROJECT_ID` | **Required** (none) | `application.properties`, `CatalystClient` | Zoho Catalyst project ID |
-| `ZOHO_CATALYST_PROJECT_KEY` | Empty string (`""`) | `application.properties` | Zoho Catalyst project key |
-| `ZOHO_CATALYST_PROJECT_DOMAIN` | `https://api.catalyst.zoho.in` | `application.properties`, `CatalystClient` | Zoho Catalyst API domain |
-| `ZOHO_CATALYST_ENVIRONMENT` | `Development` | `application.properties`, `CatalystClient` | Catalyst `Environment` request header |
+| `ZOHO_CATALYST_PROJECT_ID` | **Required** (none) | `application.properties`, `CatalystConfig` | Zoho Catalyst numeric project ID |
+| `ZOHO_CATALYST_PROJECT_KEY` | **Required when `APP_CATALYST_ENABLED=true`** (empty string fallback) | `application.properties`, `CatalystConfig` | Zoho Catalyst project key / ZAID |
+| `ZOHO_CATALYST_PROJECT_DOMAIN` | `https://api.catalyst.zoho.in` | `application.properties`, `CatalystConfig` | Zoho Catalyst API domain |
+| `ZOHO_CATALYST_ENVIRONMENT` | `Development` | `application.properties`, `CatalystConfig` | Catalyst target environment (`Development` or `Production`) |
 | `ZOHO_OAUTH_SCOPES` | `openid,email,profile` | `application.properties` | Zoho OAuth2/OIDC scopes |
-| `ZOHO_CATALYST_CLIENT_ID` | **Required** (none) | `application.properties`, `OAuthManager` | Catalyst OAuth client ID |
-| `ZOHO_CATALYST_CLIENT_SECRET` | **Required** (none) | `application.properties`, `OAuthManager` | Catalyst OAuth client secret |
-| `ZOHO_CATALYST_REFRESH_TOKEN` | **Required** (none) | `application.properties`, `OAuthManager` | Catalyst refresh token for DataStore BaaS API calls |
+| `ZOHO_CATALYST_CLIENT_ID` | **Required when `APP_CATALYST_ENABLED=true`** (empty string fallback) | `application.properties`, `CatalystConfig` | Catalyst SDK OAuth client ID |
+| `ZOHO_CATALYST_CLIENT_SECRET` | **Required when `APP_CATALYST_ENABLED=true`** (empty string fallback) | `application.properties`, `CatalystConfig` | Catalyst SDK OAuth client secret |
+| `ZOHO_CATALYST_REFRESH_TOKEN` | **Required when `APP_CATALYST_ENABLED=true`** (empty string fallback) | `application.properties`, `CatalystConfig` | Catalyst SDK refresh token |
 | `ZOHO_ACCOUNTS_URL` | `https://accounts.zoho.in` | `application.properties`, `ZohoTokenService` | Zoho Accounts data center URL |
 | `ZOHO_CLIENT_ID` | **Required** (none) | `application.properties`, Spring OAuth2, `ZohoTokenService` | Zoho OAuth2 login client ID |
 | `ZOHO_CLIENT_SECRET` | **Required** (none) | `application.properties`, Spring OAuth2, `ZohoTokenService` | Zoho OAuth2 login client secret |
@@ -410,15 +415,15 @@ Two example templates are tracked in Git with placeholder values only:
 
 ## 12. Zoho Catalyst Setup
 
-1. Create a project in the **Zoho Catalyst Console** and note your **Project ID** (`ZOHO_CATALYST_PROJECT_ID`), **Project Key** (`ZOHO_CATALYST_PROJECT_KEY`), and regional **Project Domain** (`ZOHO_CATALYST_PROJECT_DOMAIN`, default `https://api.catalyst.zoho.in`).
+1. Create a project in the **Zoho Catalyst Console** and note your **Project ID** (`ZOHO_CATALYST_PROJECT_ID`), **Project Key / ZAID** (`ZOHO_CATALYST_PROJECT_KEY`), and regional **Project Domain** (`ZOHO_CATALYST_PROJECT_DOMAIN`, default `https://api.catalyst.zoho.in`).
 2. Generate Catalyst OAuth credentials (`ZOHO_CATALYST_CLIENT_ID`, `ZOHO_CATALYST_CLIENT_SECRET`) and a **Refresh Token** (`ZOHO_CATALYST_REFRESH_TOKEN`).
-   - Note: `OAuthManager` currently posts refresh-token requests to `https://accounts.zoho.in/oauth/v2/token`.
+   - Note: `CatalystConfig` configures `ZCAuth` (`ZCUserScope.ADMIN`) and sets `X_ZOHO_CATALYST_ACCOUNTS_URL` from `zoho.accounts.base-url` (e.g., `https://accounts.zoho.in`) if not already defined in the environment.
 3. Create the following **Catalyst DataStore tables** matching the exact names and columns used by the repositories:
 
-| Table Name | Repository / Client | Columns Used |
+| Table Name | Repository / Service | Columns Used |
 | --- | --- | --- |
-| `Product` | `ProductRepository` / `CatalystClient` | `prodName`, `prodDescription`, `prodPrice`, `prodQuantity`, `prodImage`, `prodCategory`, `active` |
-| `Cartitem` | `CartRepository` / `CatalystClient` | `customerId`, `productId`, `prodName`, `prodPrice`, `quantity`, `subtotal` |
+| `Product` | `ProductRepository` / `CatalystDataStoreService` | `prodName`, `prodDescription`, `prodPrice`, `prodQuantity`, `prodImage`, `prodCategory`, `active` |
+| `Cartitem` | `CartRepository` / `CatalystDataStoreService` | `customerId`, `productId`, `prodName`, `prodPrice`, `quantity`, `subtotal` |
 | `Customer` | `CustomerRepository` | `customerName`, `email`, `phone`, `address`, `createdAt` |
 | `Orders` | `OrderRepository` | `customerId`, `totalAmount`, `orderStatus`, `orderDate` |
 | `Orderitem` | `OrderRepository` | `orderId`, `productId`, `prodName`, `prodPrice`, `quantity`, `subtotal` |
@@ -577,18 +582,22 @@ cd backend
 ./mvnw test -Dtest=OrderServiceTest
 ```
 
-### Existing Test Classes (12 Files)
+### Existing Test Classes (16 Files)
 
 - `AuthControllerTest` — `/auth/me`, `/auth/logout`, `/auth/zoho/login`, `/auth/zoho/token/status`
-- `CartRepositoryTest` — Catalyst and local cart repository behavior
+- `CartRepositoryTest` — Catalyst SDK and local cart repository behavior
+- `CatalystConfigAndDataStoreTest` — Catalyst SDK initialization, pagination (`getPagedRows`), CRUD, ZCQL, and disabled-mode checks
 - `CustomerAndOrderControllerTest` — Customer and order REST endpoints and validation
-- `CustomerRepositoryTest` — Catalyst `Customer` table mapping and queries
+- `CustomerRepositoryTest` — Catalyst SDK `Customer` table mapping and queries
 - `CustomerServiceTest` — Registration, email normalization/uniqueness, Zoho user provisioning
 - `DotenvEnvironmentPostProcessorTest` — Automatic `.env` loading, placeholder resolution, root/subdirectory discovery, and OS env precedence
 - `ECommerceApplicationTests` — Spring Boot `@SpringBootTest` context load smoke test
+- `OrderRepositoryTest` — Catalyst SDK `Orders` and `Orderitem` CRUD and compensating cleanup
 - `OrderServiceTest` — Order creation, stock validation, compensation on failure, cancellation, fulfillment
+- `PaymentRepositoryTest` — Catalyst SDK `Payment` and `StripeEvent` CRUD and idempotency checks
+- `PaymentServiceAndControllerTest` — Stripe Checkout session creation, payment confirmation, and signed webhook verification
 - `ProductAndCartControllerTest` — Product and cart REST endpoints and validation
-- `ProductRepositoryTest` — Catalyst and local product repository behavior
+- `ProductRepositoryTest` — Catalyst SDK and local product repository behavior
 - `ProductServiceTest` — Product CRUD and stock deduction
 - `ZohoTokenServiceTest` — In-memory Zoho token storage, expiry buffer, removal
 
@@ -608,7 +617,7 @@ cd backend
 - **Stripe webhook returns `400 Bad Request` (`Missing Stripe signature` or `Invalid Stripe signature`):**
   - Confirm `stripe listen --forward-to localhost:8080/api/payments/webhook` is active and `STRIPE_WEBHOOK_SECRET` matches the `whsec_...` secret from Stripe CLI.
 - **Catalyst errors for Customer, Order, or Payment operations:**
-  - Even if `app.catalyst.enabled` is toggled to `false` in `application.properties`, only `ProductRepository` and `CartRepository` have in-memory fallbacks; `CustomerRepository`, `OrderRepository`, and `PaymentRepository` always call `CatalystClient` and require valid Catalyst credentials and tables.
+  - Even if `app.catalyst.enabled` is toggled to `false` in `application.properties`, only `ProductRepository` and `CartRepository` have in-memory fallbacks; `CustomerRepository`, `OrderRepository`, and `PaymentRepository` always call `CatalystDataStoreService` and require `app.catalyst.enabled=true` with valid Catalyst credentials and tables.
 
 ---
 

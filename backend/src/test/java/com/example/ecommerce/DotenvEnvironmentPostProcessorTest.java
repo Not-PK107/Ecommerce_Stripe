@@ -9,8 +9,6 @@ import org.springframework.context.ConfigurableApplicationContext;
 import org.springframework.core.env.ConfigurableEnvironment;
 import org.springframework.core.env.StandardEnvironment;
 import org.springframework.core.env.SystemEnvironmentPropertySource;
-import org.springframework.security.oauth2.client.registration.ClientRegistration;
-import org.springframework.security.oauth2.client.registration.ClientRegistrationRepository;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -40,9 +38,6 @@ class DotenvEnvironmentPostProcessorTest {
                 STRIPE_PUBLISHABLE_KEY=pk_test_dotenv_value
                 STRIPE_WEBHOOK_SECRET=whsec_dotenv_value
                 ZOHO_ACCOUNTS_URL=https://accounts.zoho.com
-                ZOHO_CLIENT_ID=zoho_dotenv_client_id
-                ZOHO_CLIENT_SECRET=zoho_dotenv_client_secret
-                ZOHO_REDIRECT_URI=https://api.example.com/auth/zoho/callback
                 ZOHO_CATALYST_PROJECT_ID=cat_proj_dotenv
                 ZOHO_CATALYST_PROJECT_KEY=cat_key_dotenv
                 ZOHO_CATALYST_PROJECT_DOMAIN=https://api.catalyst.zoho.com
@@ -69,17 +64,33 @@ class DotenvEnvironmentPostProcessorTest {
             assertEquals("whsec_dotenv_value", env.getProperty("stripe.webhook-secret"));
             assertNotNull(context.getBean(StripeClient.class));
 
-            ClientRegistration zohoReg = context.getBean(ClientRegistrationRepository.class)
-                    .findByRegistrationId("zoho");
-            assertNotNull(zohoReg);
-            assertEquals("zoho_dotenv_client_id", zohoReg.getClientId());
-            assertEquals("zoho_dotenv_client_secret", zohoReg.getClientSecret());
-            assertEquals("https://api.example.com/auth/zoho/callback", zohoReg.getRedirectUri());
-
+            assertEquals("https://accounts.zoho.com", env.getProperty("zoho.accounts.base-url"));
             assertEquals("cat_proj_dotenv", env.getProperty("zoho.catalyst.project-id"));
             assertEquals("cat_client_dotenv", env.getProperty("zoho.catalyst.client-id"));
             assertEquals("cat_secret_dotenv", env.getProperty("zoho.catalyst.client-secret"));
             assertEquals("cat_refresh_dotenv", env.getProperty("zoho.catalyst.refresh-token"));
+        }
+    }
+
+    @Test
+    void appSailListenPortTakesPrecedenceOverServerPort(@TempDir Path tempDir) throws IOException {
+        Path envFile = tempDir.resolve(".env");
+        Files.writeString(envFile, """
+                X_ZOHO_CATALYST_LISTEN_PORT=0
+                SERVER_PORT=9999
+                APP_CATALYST_ENABLED=false
+                STRIPE_SECRET_KEY=sk_test_dotenv_value
+                STRIPE_PUBLISHABLE_KEY=pk_test_dotenv_value
+                """);
+
+        SpringApplication app = new SpringApplication(ECommerceApplication.class);
+        app.setDefaultProperties(Map.of(
+                "spring.config.location", MAIN_CONFIG_LOCATION,
+                "app.dotenv.path", envFile.toString()
+        ));
+
+        try (ConfigurableApplicationContext context = app.run()) {
+            assertEquals("0", context.getEnvironment().getProperty("server.port"));
         }
     }
 
@@ -89,10 +100,6 @@ class DotenvEnvironmentPostProcessorTest {
         Files.writeString(envFile, """
                 server.port=0
                 app.catalyst.enabled=false
-                zoho.client-id= zoho_prop_client_id
-                zoho.client-secret= zoho_prop_client_secret
-                spring.security.oauth2.client.registration.zoho.client-id=${ZOHO_CLIENT_ID:demo-zoho-client-id}
-                spring.security.oauth2.client.registration.zoho.client-secret=${ZOHO_CLIENT_SECRET:demo-zoho-client-secret}
                 zoho.catalyst.project-id=cat_proj_prop
                 zoho.catalyst.client-id= cat_client_prop
                 zoho.catalyst.client-secret=cat_secret_prop
@@ -115,12 +122,7 @@ class DotenvEnvironmentPostProcessorTest {
             String webhookSecret = env.getProperty("stripe.webhook-secret");
             assertTrue(webhookSecret == null || webhookSecret.isEmpty(),
                     "Template placeholder line in .env should be skipped rather than exposing dummy secret");
-
-            ClientRegistration zohoReg = context.getBean(ClientRegistrationRepository.class)
-                    .findByRegistrationId("zoho");
-            assertNotNull(zohoReg);
-            assertEquals("zoho_prop_client_id", zohoReg.getClientId());
-            assertEquals("zoho_prop_client_secret", zohoReg.getClientSecret());
+            assertEquals("cat_client_prop", env.getProperty("zoho.catalyst.client-id"));
         }
     }
 

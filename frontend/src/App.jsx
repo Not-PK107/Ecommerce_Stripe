@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { apiRequest, API_BASE_URL } from "./api.js";
+import { apiRequest } from "./api.js";
 
 const money = (amount) =>
   new Intl.NumberFormat("en-IN", {
@@ -130,7 +130,6 @@ function App() {
   const [products, setProducts] = useState([]);
   const [cart, setCart] = useState(getSavedCart);
   const [currentUser, setCurrentUser] = useState(getSavedUser);
-  const [zohoUser, setZohoUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
   const [search, setSearch] = useState("");
@@ -178,44 +177,6 @@ function App() {
     }
   }
 
-  async function checkZohoAuth() {
-    try {
-      const res = await apiRequest("/auth/me");
-      if (res && res.authenticated && res.user) {
-        setZohoUser(res.user);
-        if (res.customer) {
-          setCurrentUser(res.customer);
-          window.localStorage.setItem("form-field-user", JSON.stringify(res.customer));
-          await syncCart(res.customer.customerId);
-          await loadServerCart(res.customer.customerId, products);
-        }
-      } else {
-        setZohoUser(null);
-      }
-    } catch {
-      setZohoUser(null);
-    }
-  }
-
-  function handleZohoLogin() {
-    window.location.href = `${API_BASE_URL}/oauth2/authorization/zoho`;
-  }
-
-  async function handleZohoLogout() {
-    try {
-      await apiRequest("/auth/logout", { method: "POST" });
-    } catch (err) {
-      console.warn("Zoho logout notice:", err);
-    }
-    setZohoUser(null);
-    setCurrentUser(null);
-    window.localStorage.removeItem("form-field-user");
-    setCart([]);
-    window.localStorage.removeItem("form-field-cart");
-    setNotice("Signed out of Zoho Accounts.");
-    setTimeout(() => setNotice(""), 2600);
-  }
-
   function openCheckout() {
     setCartOpen(false);
     if (!currentUser) {
@@ -235,24 +196,10 @@ function App() {
 
   useEffect(() => {
     loadProducts();
-    checkZohoAuth();
 
     const urlParams = new URLSearchParams(window.location.search);
     const checkoutResult = urlParams.get("checkout");
     const orderId = urlParams.get("orderId") || window.localStorage.getItem("form-field-pending-order");
-
-    const zohoLoginParam = urlParams.get("zoho_login");
-    const zohoErrorParam = urlParams.get("error");
-    if (zohoLoginParam === "success") {
-      setNotice("Successfully signed in with Zoho Accounts!");
-      setTimeout(() => setNotice(""), 3500);
-      window.history.replaceState({}, "", window.location.pathname);
-      checkZohoAuth();
-    } else if (zohoLoginParam === "error") {
-      setNotice(zohoErrorParam ? `Zoho sign-in failed: ${decodeURIComponent(zohoErrorParam)}` : "Zoho authentication was cancelled or could not be completed.");
-      setTimeout(() => setNotice(""), 6000);
-      window.history.replaceState({}, "", window.location.pathname);
-    }
 
     if (checkoutResult === "success") {
       setNotice("Payment complete — updating inventory...");
@@ -596,7 +543,7 @@ function App() {
     setTimeout(() => setNotice(""), 2600);
   }
 
-  // Order Placement - STRICTLY GATED TO LOGGED-IN CUSTOMERS (COMMERCE OR ZOHO OAUTH)
+  // Order Placement - STRICTLY GATED TO LOGGED-IN CUSTOMERS
   async function placeOrder(event) {
     event.preventDefault();
     if (!currentUser) {
@@ -688,20 +635,7 @@ function App() {
         </nav>
 
         <div className="header-actions">
-          {zohoUser ? (
-            <div className="zoho-user-pill" title={`Zoho Account: ${zohoUser.email}`}>
-              <span className="zoho-tag">ZOHO</span>
-              <span className="zoho-user-name">{zohoUser.name || currentUser?.customerName || "Account"}</span>
-              <button
-                type="button"
-                className="zoho-signout-btn"
-                onClick={handleZohoLogout}
-                title="Sign out of Zoho"
-              >
-                Sign out
-              </button>
-            </div>
-          ) : currentUser ? (
+          {currentUser ? (
             <div className="user-badge">
               <span className="user-avatar" title={currentUser.email}>
                 {currentUser.customerName.charAt(0).toUpperCase()}
@@ -968,20 +902,6 @@ function App() {
               </div>
             )}
 
-            <div className="zoho-auth-wrapper">
-              <button
-                type="button"
-                className="button button-zoho"
-                onClick={handleZohoLogin}
-              >
-                <span className="zoho-btn-badge">ZOHO</span>
-                <span>Connect Zoho</span>
-              </button>
-              <div className="auth-divider">
-                <span>or continue with email account</span>
-              </div>
-            </div>
-
             <div className="auth-tabs">
               <button
                 type="button"
@@ -1138,7 +1058,6 @@ function App() {
             <form className="checkout-form" onSubmit={placeOrder}>
               <div className="customer-summary-card">
                 <div><strong>Ordering as:</strong> {currentUser.customerName} ({currentUser.email})</div>
-                {zohoUser && <div style={{ fontSize: "11px", color: "#0066cc", marginTop: "3px" }}>✓ Signed in via Zoho Accounts</div>}
               </div>
 
               <label className="form-field full-field">
